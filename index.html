@@ -4,6 +4,8 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=Edge;chrome=1" />
     <title>HTML5 Presentation</title>
+    <link rel="shortcut icon" href="favicon.ico" />
+
     <link href="http://fonts.googleapis.com/css?family=Droid+Sans|Droid+Sans+Mono" rel="stylesheet" type="text/css" />
     <link id="prettify-link" href="src/prettify/prettify.css" rel="stylesheet" disabled />
     <link href="css/moon.css" class="theme" rel="stylesheet" />
@@ -272,7 +274,7 @@ textarea.value = window.<b>localStorage</b>.<b>getItem</b>('value');
               color: red;
             }
           </style>
-          <header><span class="js">JS</span> <h1>Web SQL Database</h1></header>
+          <header><span class="js">JS</span> <h1>Web SQL Database - deprecated</h1></header>
           <section>
 <pre>var db = window.<b>openDatabase</b>("DBName", "1.0", "description", 5*1024*1024); //5MB
 db.<b>transaction</b>(function(tx) {
@@ -406,198 +408,149 @@ idbRequest.onsuccess = function(event) {
   curRequest.<b>onsuccess</b> = ...;
 };
 </pre>
-          <div class="center" id="indexeddb-example">
-            <input type="text" placeholder="key" id="idb-key" size="10" /> <input type="text" placeholder="value" id="idb-value" size="15" />
-            <button onclick="indexedDbSample.idbSet()">set</button>
-            <button onclick="indexedDbSample.idbCreate()">create objectStore</button>
-            <button onclick="indexedDbSample.idbRemove()">remove objectStore</button>
-            <div id="idb-log"></div>
-            <div class="record-list" id="idb-results-wrapper"></div>
-          </div>
-          <script defer>
-            var indexedDbSample = (function() {
-              var idb_;
-              var idbRequest_;
-              var idbLog_ = document.getElementById('idb-log');
-              var idResultsWrapper_ = document.getElementById('idb-results-wrapper');
+            <script>
+			      var idDB = {};
+			      window.indexedDB = window.indexedDB || window.webkitIndexedDB || window.mozIndexedDB;
 
-              // IndexedDB spec is still evolving, various browsers keep it
-              // behind various flags and implementation varies.
-                window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
-                window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
+			      if ('webkitIndexedDB' in window) {
+			        window.IDBTransaction = window.webkitIDBTransaction;
+			        window.IDBKeyRange = window.webkitIDBKeyRange;
+			      }
 
-               if (!window.indexedDB) {
-				    console.error("Your browser doesn't support a stable version of IndexedDB. Such and such feature will not be available.");
-				};
+			      idDB.indexedDB = {};
+			      idDB.indexedDB.db = null;
 
-                idbRequest_ = window.indexedDB.open("Test",1);
-                idbRequest_.onerror = idbError_;
+			      idDB.indexedDB.onerror = function(e) {
+			        console.log(e);
+			      };
 
-                idbRequest_.addEventListener('success', function(event) {
-                  idb_ = event.srcElement.result;
-                  idbShow_(event);
-                }, false);
+			      idDB.indexedDB.open = function() {
+			        var request = indexedDB.open("todos");
 
-              function idbError_(event) {
-                idbLog_.innerHTML += '<p class="error">Error: ' +
-                                     event.message + ' (' + event.code + ')</p>';
-              }
+			        request.onsuccess = function(e) {
+			          var v = 1;
+			          idDB.indexedDB.db = e.target.result;
+			          var db = idDB.indexedDB.db;
+			          // We can only create Object stores in a setVersion transaction;
+			          if (v != db.version) {
+			            var setVrequest = db.setVersion(v);
 
-              function idbShow_(event) {
-                if (!idb_.objectStoreNames.contains('myObjectStore')) {
-                  idbLog_.innerHTML = "<p>Object store not yet created.</p>";
-                  return;
-                }
+			            // onsuccess is the only place we can create Object Stores
+			            setVrequest.onerror = idDB.indexedDB.onerror;
+			            setVrequest.onsuccess = function(e) {
+			              if(db.objectStoreNames.contains("todo")) {
+			                db.deleteObjectStore("todo");
+			              }
 
-                var html = [];
-                var transaction = idb_.transaction([], IDBTransaction.READ_ONLY); // Read is default.
-                var request = transaction.objectStore('myObjectStore').openCursor(); // Get all results.
+			              var store = db.createObjectStore("todo",
+			                {keyPath: "timeStamp"});
+			              e.target.transaction.oncomplete = function() {
+			                idDB.indexedDB.getAllTodoItems();
+			              };
+			            };
+			          } else {
+			            request.transaction.oncomplete = function() {
+			              idDB.indexedDB.getAllTodoItems();
+			            };
+			          }
+			        };
+			        request.onerror = idDB.indexedDB.onerror;
+			      };
 
-                // This callback will continue to be called until we have no more results.
-                request.onsuccess = function(e) {
-                  var cursor = e.srcElement.result;
-                  if (!cursor) {
-                    idResultsWrapper_.innerHTML = '<ul class="record-list" id="idb-results">' + html.join('') + '</ul>';
-                    return;
-                  }
-                  html.push('<li><span class="keyval" contenteditable onblur="indexedDbSample.updateKey(\'',
-                            cursor.key, '\', this)">', cursor.key, '</span> ',
-                            '=> <span class="keyval" contenteditable onblur="indexedDbSample.updateValue(\'',
-                            cursor.key, '\', this)">', cursor.value, '</span>&nbsp; ',
-                            '<a href="javascript:void(0)" onclick="indexedDbSample.deleteKey(\'',
-                            cursor.key, '\')">[Delete]</a></li>');
-                  cursor.continue();
-                }
-                request.onerror = idbError_;
-              }
+			      idDB.indexedDB.addTodo = function(todoText) {
+			        var db = idDB.indexedDB.db;
+			        var trans = db.transaction(["todo"], "readwrite");
+			        var store = trans.objectStore("todo");
 
-              function idbCreate_() {
-                if (!idb_) {
-                  if (idbRequest_) {
-                    idbRequest_.addEventListener('success', removeObjectStore, false); // If indexedDB is still opening, just queue this up.
-                  }
-                  return;
-                }
+			        var data = {
+			          "text": todoText,
+			          "timeStamp": new Date().getTime()
+			        };
 
-                  if (!idb_.objectStoreNames.contains('myObjectStore')) {
-                    try {
-                      var objectStore = idb_.createObjectStore('myObjectStore', null); // FF is requiring the 2nd keyPath arg. It can be optional :(
-                      idbLog_.innerHTML = "<p>Object store created.</p>";
-                    } catch (err) {
-                      idbLog_.innerHTML = '<p class="error">' + err.toString() + '</p>';
-                    }
-                  } else {
-                    idbLog_.innerHTML = '<p class="error">Object store already exists.</p>';
-                  }
-              }
+			        var request = store.put(data);
 
+			        request.onsuccess = function(e) {
+			          idDB.indexedDB.getAllTodoItems();
+			        };
 
-              function idbSet_() {
-                if (!idb_) {
-                  if (idbRequest_) {
-                    idbRequest_.addEventListener('success', removeObjectStore, false); // If indexedDB is still opening, just queue this up.
-                  }
-                  return;
-                }
+			        request.onerror = function(e) {
+			          console.log("Error Adding: ", e);
+			        };
+			      };
 
-                if (!idb_.objectStoreNames.contains('myObjectStore')) {
-                  idbLog_.innerHTML = "<p class=\"error\">Object store doesn't exist.</p>";
-                  return;
-                }
+			      idDB.indexedDB.deleteTodo = function(id) {
+			        var db = idDB.indexedDB.db;
+			        var trans = db.transaction(["todo"], "readwrite");
+			        var store = trans.objectStore("todo");
 
-                 // Create a transaction that locks the world.
-                var objectStore = idb_.transaction([], IDBTransaction.READ_WRITE)
-                                      .objectStore("myObjectStore");
-                var request = objectStore.put(
-                    document.getElementById('idb-value').value,
-                    document.getElementById('idb-key').value);
-                request.onerror = idbError_;
-                request.onsuccess = idbShow_;
-              }
+			        var request = store.delete(id);
 
-              function updateKey_(key, element) {
-                var newKey = element.textContent;
-                var transaction = idb_.transaction([], IDBTransaction.READ_WRITE); // Create a transaction that locks the world.
-                var objectStore = transaction.objectStore("myObjectStore");
-                var request = objectStore.get(key);
-                request.onerror = idbError_;
-                request.onsuccess = function(event) {
-                  var value = event.srcElement.result;
-                  if (objectStore.delete) {
-                    var request = objectStore.delete(key);
-                  } else {
-                    var request = objectStore.remove(key);
-                  }
-                  request.onerror = idbError_;
-                  request.onsuccess = function(event) {
-                    var request = objectStore.add(value, newKey);
-                    request.onerror = idbError_;
-                    request.onsuccess = idbShow_;
-                  };
-                };
-              }
+			        request.onsuccess = function(e) {
+			          idDB.indexedDB.getAllTodoItems();
+			        };
 
-              function updateValue_(key, element) {
-                var transaction = idb_.transaction([], IDBTransaction.READ_WRITE); // Create a transaction that locks the world.
-                var objectStore = transaction.objectStore("myObjectStore");
-                var request = objectStore.put(element.textContent, key);
-                request.onerror = idbError_;
-                request.onsuccess = idbShow_;
-              }
+			        request.onerror = function(e) {
+			          console.log("Error Adding: ", e);
+			        };
+			      };
 
-              function deleteKey_(key) {
-                var transaction = idb_.transaction([], IDBTransaction.READ_WRITE); // Create a transaction that locks the world.
-                var objectStore = transaction.objectStore("myObjectStore");
-                if (objectStore.delete) {
-                  var request = objectStore.delete(key);
-                } else {
-                  var request = objectStore.remove(key);
-                }
-                request.onerror = idbError_;
-                request.onsuccess = idbShow_;
-              }
+			      idDB.indexedDB.getAllTodoItems = function() {
+			        var todos = document.getElementById("todoItems");
+			        todos.innerHTML = "";
 
-              function idbRemove_() {
-                if (!idb_) {
-                  if (idbRequest_) {
-                    idbRequest_.addEventListener('success', removeObjectStore, false); // If indexedDB is still opening, just queue this up.
-                  }
-                  return;
-                }
+			        var db = idDB.indexedDB.db;
+			        var trans = db.transaction(["todo"], "readwrite");
+			        var store = trans.objectStore("todo");
 
-                var request = idb_.setVersion("the new version string");
-                request.onerror = idbError_;
-                request.onsuccess = function(event) {
+			        // Get everything in the store;
+			        var cursorRequest = store.openCursor();
 
-                  if (idb_.objectStoreNames.contains('myObjectStore')) {
-                    try {
-                      // Spec has been updated to deleteObjectStore.
-                      if (idb_.deleteObjectStore) {
-                        idb_.deleteObjectStore('myObjectStore');
-                      } else {
-                        idb_.removeObjectStore('myObjectStore');
-                      }
-                      idResultsWrapper_.innerHTML = '';
-                      idbLog_.innerHTML = "<p>Object store removed.</p>";
-                    } catch (err) {
-                      idbLog_.innerHTML = '<p class="error">' + err.toString() + '</p>';
-                    }
-                  } else {
-                    idbLog_.innerHTML = "<p class=\"error\">Object store doesn't exist.</p>";
-                  }
-                };
-              }
+			        cursorRequest.onsuccess = function(e) {
+			          var result = e.target.result;
+			          if(!!result == false)
+			            return;
 
-              return {
-                idbSet: idbSet_,
-                idbCreate: idbCreate_,
-                idbRemove: idbRemove_,
-                updateKey: updateKey_,
-                updateValue: updateValue_,
-                deleteKey: deleteKey_
-              }
-            })();
-          </script>
+			          renderTodo(result.value);
+			          result.continue();
+			        };
+
+			        cursorRequest.onerror = idDB.indexedDB.onerror;
+			      };
+
+			      function renderTodo(row) {
+			        var todos = document.getElementById("todoItems");
+			        var li = document.createElement("li");
+			        var a = document.createElement("a");
+			        var t = document.createTextNode(row.text);
+
+			        a.addEventListener("click", function() {
+			          idDB.indexedDB.deleteTodo(row.timeStamp);
+			        }, false);
+
+			        a.textContent = " [Delete]";
+			        li.appendChild(t);
+			        li.appendChild(a);
+			        todos.appendChild(li);
+			      }
+
+			      function addTodo() {
+			        var todo = document.getElementById("todo");
+			        idDB.indexedDB.addTodo(todo.value);
+			        todo.value = "";
+			      }
+
+			      function init() {
+			        idDB.indexedDB.open();
+			      }
+
+			      window.addEventListener("DOMContentLoaded", init, false);
+			    </script>
+
+			<div class="center" id="indexeddb-example">
+				<ul id="todoItems"></ul>
+				<input type="text" id="todo" name="todo" placeholder="What do you need to do?" style="width: 200px;" />
+				<input type="submit" value="Add Todo Item" onclick="addTodo(); return false;"/>
+			</div>
         </section>
       </div>
 
