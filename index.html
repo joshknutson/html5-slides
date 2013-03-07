@@ -33,14 +33,10 @@
             #landing-slide p {
               font-size: 35px;
             }
-            p#disclaimer-message {
-              font-size: 20px;
-            }
           </style>
           <section class="middle">
             <p>This presentation is an HTML5 website</p>
             <p>Press <span id="left-init-key" class="key">&rarr;</span> key to advance.</p>
-            <p id="disclaimer-message">Having issues seeing the presentation? Read the <a href="disclaimer.html">disclaimer</a></p>
           </section>
           <aside class="note">
             <section>
@@ -427,22 +423,20 @@ idbRequest.onsuccess = function(event) {
 
               // IndexedDB spec is still evolving, various browsers keep it
               // behind various flags and implementation varies.
-              if ('webkitIndexedDB' in window) {
-                window.indexedDB = window.webkitIndexedDB;
-                window.IDBTransaction = window.webkitIDBTransaction;
-              } else if ('moz_indexedDB' in window) {
-                window.indexedDB = window.moz_indexedDB;
-              }
+                window.indexedDB = window.indexedDB || window.mozIndexedDB || window.webkitIndexedDB || window.msIndexedDB;
+                window.IDBTransaction = window.IDBTransaction || window.webkitIDBTransaction || window.msIDBTransaction;
 
-              // Open our IndexedDB if the browser supports it.
-              if (window.indexedDB) {
-                idbRequest_ = window.indexedDB.open("Test", "A test object store.");
+               if (!window.indexedDB) {
+				    console.error("Your browser doesn't support a stable version of IndexedDB. Such and such feature will not be available.");
+				};
+
+                idbRequest_ = window.indexedDB.open("Test",1);
                 idbRequest_.onerror = idbError_;
+
                 idbRequest_.addEventListener('success', function(event) {
                   idb_ = event.srcElement.result;
                   idbShow_(event);
                 }, false);
-              }
 
               function idbError_(event) {
                 idbLog_.innerHTML += '<p class="error">Error: ' +
@@ -485,9 +479,6 @@ idbRequest.onsuccess = function(event) {
                   return;
                 }
 
-                var request = idb_.setVersion('the new version string');
-                request.onerror = idbError_;
-                request.onsuccess = function(e) {
                   if (!idb_.objectStoreNames.contains('myObjectStore')) {
                     try {
                       var objectStore = idb_.createObjectStore('myObjectStore', null); // FF is requiring the 2nd keyPath arg. It can be optional :(
@@ -498,8 +489,8 @@ idbRequest.onsuccess = function(event) {
                   } else {
                     idbLog_.innerHTML = '<p class="error">Object store already exists.</p>';
                   }
-                }
               }
+
 
               function idbSet_() {
                 if (!idb_) {
@@ -1798,7 +1789,7 @@ Goal is: <progress value="75" max="100">3/4 complete</progress>
 
 <input type="email" value="some@email.com" />&lt;input type="<b>email</b>" value="some@email.com" /&gt;
 
-<input type="date" min="2010-08-14" max="2011-08-14" value="2010-08-14" />&lt;input type="<b>date</b>" <b>min</b>="2010-08-14" <b>max</b>="2011-08-14" value="2010-08-14"/&gt;
+<input type="date" min="2010-01-01" max="2014-12-31" value="2013-03-07" />&lt;input type="<b>date</b>" <b>min</b>="2010-01-01" <b>max</b>="2014-12-31" value="2013-03-07"/&gt;
 
 <input type="range" min="0" max="50" value="10" />&lt;input type="<b>range</b>" <b>min</b>="0" <b>max</b>="50" value="10" /&gt;
 
